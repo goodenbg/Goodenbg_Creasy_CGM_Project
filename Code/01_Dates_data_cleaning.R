@@ -142,7 +142,7 @@ dates_long <- dates %>%
     )
   ) %>%
   # keep only relevant columns
-  select(id, chamber_y_n,condition, cond_start, cond_end, notes)
+  select(id, chamber_y_n,condition, cond_num, cond_start, cond_end, cond_num, notes)
 
 #############################################################################################################
 
@@ -190,17 +190,63 @@ cgm3 <- cgm2 %>%
 
 # verify
 head(cgm3)
-sum(is.na(cgm3$condition))
-names(dates$condition)
 
 
 
 #---- Check for missing condition dates between populated ones ----
 
-n_distinct(cgm3$condition, na.rm = TRUE) 
+n_distinct(cgm3$condition, na.rm = TRUE) # shoudl be 5 :)
 
-cgm_check <- cgm3 %>% select(id, date,  cond_start, cond_end, condition, notes)
-dates_check <- dates_long %>% select(id, cond_start, cond_end, condition, notes)
+# flag and separate NAs: leading/trailing (remove) vs floating (keep, verify with PI)
+
+#cgm3 <- cgm3 %>% 
+  #group_by(id) %>% 
+  #arrange(id, date) %>% 
+  #mutate(
+    # find first and last date with known condition for each participant
+    #first = min(date[!is.na(condition)], na.rm = TRUE), 
+    #last = max(date[!is.na(condition)], na.rm = TRUE),
+    
+    # flag rows to remove if they are outside condition range
+    #remove_flag = is.na(condition) &
+      #(date < first | date > last)
+  #) %>% 
+  #ungroup()
+
+#check how many would be removed
+#cgm3 %>% count(remove_flag)
+# this approach is both too specifci and too nonspecific for what I want: 
+# different approach below --------------------------------------------
+
+
+# manually assigning the ids that I know have suspicious missing dates
+# will remove all NAs except for these ids:
+keep_na_ids <- c("TAN-002", "TAN-012", "TAN-020", "TAN-022", "TAN-027")
+
+# Testing with a flag before deleting
+cgm3 <- cgm3 %>%
+  mutate(
+    remove = !(id %in% keep_na_ids) &
+      (is.na(cond_start) | is.na(cond_end)))
+
+# ^ looks good lets remove those unnecessary NAs:
+cgm3_clean <- cgm3 %>%
+  filter(!remove) 
+
+#manually remove a few leftover from keep_na_ids
+cgm3_clean <- cgm3_clean[-c(37, 56, 57, 161, 171, 177, 182:184,
+                            290, 291, 296, 297, 302, 303,
+                            308, 309, 320:322), ]
+
+#remove unneeded column
+cgm3_clean <- cgm3_clean[, !names(cgm3_clean) %in% c("remove")]
+
+#write clean dataset to new file
+#library(writexl)
+#write.csv(dates,"cgm3_clean", row.names = FALSE)
+
+# ------------------------------------------
+
 
 
 # -look for any outliers for start end 24 hr wear- does everyone have ~24 hours of wear?
