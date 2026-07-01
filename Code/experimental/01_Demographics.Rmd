@@ -1,0 +1,84 @@
+---
+title: "00_demographics"
+author: "Gwen Goodenbour"
+date: "2026-06-11"
+output: 
+  html_document:
+    toc: 
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(table1)
+library(ggplot2)
+library(readxl)
+library(here)
+
+here()
+```
+
+```{r}
+dem_data <- read_excel(here("DataRaw","23-1388 Demographics.xlsx"))
+
+#check for missing data
+#colSums(is.na(dem_data))
+
+#remove missing IDs
+dem_data1 <- dem_data %>% 
+  filter(!is.na(`Record ID`))
+
+#verifying no more missing ID 
+#dem_data1 %>%
+  #count(`Record ID`) #--- looks good (removed two rows with missing data)
+
+#writing clean dataset to new excel file
+#install.packages("writexl")
+#library(writexl)
+#write_xlsx(dem_data1, "clean_23-1388 Demographics.xlsx")
+
+dem_data2 <- dem_data %>%
+  slice (-c(6,15,16,19,21,22)) %>%
+  select(-1,-5)
+```
+```{r}
+#writing clean dataset to dataprocessed folder
+library(writexl)
+library(here)
+
+write_xlsx(dem_data2, path = here("DataProcessed", "23-1388 Demographics_cleaned.xlsx"))
+
+```
+
+
+```{r}
+#table1 demographics
+library(gtsummary)
+
+dem_data2%>%
+  tbl_summary (
+    include = c(
+      `Subject Age`,
+      `Screening BMI`,
+      `Please indicate your sex at birth`,
+      `Please indicate your race:`,
+      `Ethnicity`),
+    
+    statistic = list(
+      all_continuous() ~ "{mean}({sd})",
+      all_categorical() ~ "{p}%"),
+    
+    label = list(
+      `Subject Age` ~ "Age",
+      `Screening BMI` ~ "BMI",
+      `Please indicate your sex at birth` ~ "Sex at Birth",
+      `Please indicate your race:` ~ "Race")
+  )
+```
+
+
+
+
