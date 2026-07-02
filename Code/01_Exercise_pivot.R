@@ -3,11 +3,18 @@ title: "02_exercise"
 author: "Gwen Goodenbour"
 date: "2026-06-18"
 ---
+# This file pivots exercise data from wide to long format 
   
 # PIVOT EXERCISE WIDE-> LONG
+library(readxl)
+library(dplyr)
 
+# read in file
 ex_wide <- read_excel(here("DataRaw", "23-1388 Exercise Data.xlsx"))
+# NOTE -exercise data has updated any repeated conditions to correct condition 
+# dates already :)
 
+#pivot to long data format
 ex_long <- ex_wide %>%
   rename(ID = record_ida) %>%
   mutate(condition = recode(redcap_event_name,
@@ -25,61 +32,42 @@ ex_long <- ex_wide %>%
   filter(!is.na(date)) %>%
   mutate(date = as.Date(date))
 
-
 #check
 names(ex_long)
 head(ex_long)
 nrow(ex_long)
 
+# standardizing naming convention and time
+ex_long <- ex_long %>% 
+  rename(id = `ID`) 
+
+ex_long <- ex_long %>%
+  mutate(wake = format(wake, "%H:%M"))
+
+
 #checking distinct IDs
 # How many unique participants?
-n_distinct(ex_long$ID) #too many IDs (should be 16) 
+n_distinct(ex_long$id) 
 
-#counting how many conditions each participant completed to filte rout those with less than 4
-ex_long %>% 
-  count(ID, condition) %>% 
-  count(ID, name = "n_conditions") %>% 
-  arrange(n_conditions) %>% 
-  print(n = Inf)
+#check for duplicates
+sum(duplicated(ex_long)) # = 0
+
+# exclude this step to maintain dropped/missing participants until modeling stage
+#counting how many conditions each participant completed to filter out those with less than 4
+#ex_long %>% 
+  #count(id, condition) %>% 
+  #count(id, name = "n_conditions") %>% 
+  #arrange(n_conditions) %>% 
+  #print(n = Inf)
 
 #filtering out IDs with less than four completed conditions
-ex_long <- ex_long %>% 
-  group_by(ID) %>% 
-  filter(n_distinct(condition) == 4) %>% 
-  ungroup()
+#ex_long <- ex_long %>% 
+  #group_by(ID) %>% 
+  #filter(n_distinct(condition) == 4) %>% 
+  #ungroup()
 
 # verify we now have  16 participants
-n_distinct(ex_long$ID)
+#n_distinct(ex_long$ID)
 
-#considering repeated conditions
-dates <- read_excel(here("DataRaw","23-1388 Subject Dates.xlsx")) %>% 
-  rename(ID = `Study ID`)
-repeats <- dates %>% 
-  filter(!is.na(`Repeated Condition`)) %>% 
-  pull(ID) #pull IDs of participants that had repeated conditions
 
-# see the repeated condition label for each repeater
-dates %>%
-  filter(ID %in% repeats) %>%
-  select(ID, `Repeated Condition`)
-
-# confirm exactly 16 unique participants
-n_distinct(ex_long$ID)
-
-# confirm how many days of data each participant has per condition
-ex_long %>%
-  count(ID, condition) %>%
-  print(n = Inf)
-
-# look at the 2 repeaters' conditions in exercise_long
-# alongside what their repeated condition was supposed to be
-ex_long %>%
-  filter(ID %in% repeats) %>%
-  distinct(ID, condition) %>%
-  left_join(
-    dates %>% select(ID, `Repeated Condition`),
-    by = "ID"
-  )
-write_xlsx(ex_long, path = here("DataProcessed","Exercise_data_long.xlsx"))
-# TODO: verify repeaters (TAN-002, TAN-012) don't have duplicate condition 
-# data once all raw files are merged - check for duplicate ID + condition + date rows
+#write_xlsx(ex_long, path = here("DataProcessed","Exercise_data_long.xlsx"))
