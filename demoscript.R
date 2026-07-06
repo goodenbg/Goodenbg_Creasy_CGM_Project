@@ -36,3 +36,8 @@ Print("Hello World")
 # git branch -M main
 # 2. git push -u origin main
 
+#branches
+
+# git branch to show
+# git branch <name> to name/create new branch
+# merging branch 

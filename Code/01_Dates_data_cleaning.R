@@ -1,9 +1,11 @@
 ---
 title: "01_Dates_data_cleaning"
 author: "Gwen Goodenbour"
-date: "2026-06-10- 2026-06-26"
+date: "2026-06-10- 2026-06-30"
 ---
+# This R script cleans and merges dates for cgm data and subject dates
   
+    
 library(haven)
 library(readxl)
 library(here)
@@ -234,46 +236,15 @@ cgm3_clean <- cgm3 %>%
   filter(!remove) 
 
 #manually remove a few leftover from keep_na_ids
-cgm3_clean <- cgm3_clean[-c(37, 56, 57, 161, 171, 177, 182:184,
-                            290, 291, 296, 297, 302, 303,
-                            308, 309, 320:322), ]
+# remove specific rows by row number
+cgm3_clean <- cgm3_clean %>%
+  slice(-c(37, 38, 56, 57, 64:66, 162:164, 177, 182:184, 290, 291, 296,
+           297, 302, 303, 308, 309, 320:322))
 
 #remove unneeded column
 cgm3_clean <- cgm3_clean[, !names(cgm3_clean) %in% c("remove")]
 
 #write clean dataset to new file
-#library(writexl)
-#write.csv(dates,"cgm3_clean", row.names = FALSE)
+#write.csv(cgm3_clean,"cgm3_dated", row.names = FALSE)
 
 # ------------------------------------------
-
-
-
-# -look for any outliers for start end 24 hr wear- does everyone have ~24 hours of wear?
-
-cgm3 %>%
-  mutate(
-    # Create a new column called wear_duration:
-    # difftime(end, start) calculates the time difference for each row.
-    wear_duration = as.numeric(difftime(end, start, units = "hours"))
-  ) %>%
-  
-  summarise(
-    n = n(),
-    min = min(wear_duration, na.rm = TRUE),
-    max = max(wear_duration, na.rm = TRUE),
-    mean = mean(wear_duration, na.rm = TRUE),
-    median = median(wear_duration, na.rm = TRUE),
-  )
-
-#flag difference of more than 1 hour
-cgm_flag <- cgm3 %>%
-  mutate(
-    wear_duration = as.numeric(difftime(end, start, units = "hours")),
-    wear_flag = abs(wear_duration - 24) > 1 
-  ) %>%
-  filter(wear_flag) %>%
-  select(everything(), wear_duration, wear_flag)
-
-#more than 24 hrs?
-

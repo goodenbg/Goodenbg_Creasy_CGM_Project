@@ -44,6 +44,8 @@ ex_long <- ex_long %>%
 ex_long <- ex_long %>%
   mutate(wake = format(wake, "%H:%M"))
 
+ex_long <- ex_long %>%
+  mutate(start = format(start, "%H:%M"))
 
 #checking distinct IDs
 # How many unique participants?
