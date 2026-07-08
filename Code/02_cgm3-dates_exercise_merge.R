@@ -30,15 +30,20 @@ unique(ex$condition)
 ex_summary <- ex %>%
   group_by(id, condition) %>%
   
-  # exercise data to one row per condition first
-  summarise( 
-    n_exercise_days = n(),
-    mean_hr = mean(hr, na.rm = TRUE),
-    mean_rpe = mean(rpe, na.rm = TRUE),
+  summarise(
+    n_exercise_days  = n(),
+    mean_hr          = mean(hr, na.rm = TRUE),
+    mean_rpe         = mean(rpe, na.rm = TRUE),
     mean_tread_grade = mean(tread_grade, na.rm = TRUE),
     mean_tread_speed = mean(tread_speed, na.rm = TRUE),
-    .groups = "drop"  #removes default grouping
+    mean_time        = mean(time, na.rm = TRUE),
+    
+    # food_date and wake are datetime/character - take first non-NA 
+    n_wake_recorded  = sum(!is.na(wake)),
+    n_food_recorded  = sum(!is.na(food_date)),
+    .groups = "drop"
   )
+
 
 # join summarized exercise data to cgm3
 merged <- cgm %>%
@@ -48,6 +53,17 @@ merged <- cgm %>%
 dim(merged)
 names(merged)
 
+# notes column is feeling cluttered now - making new dataset and removing from merge
+
+# save column as its own table
+notes <- merged %>%
+  select(id, notes)
+
+# remove it from merged
+merged <- merged %>%
+  select(-notes)
+
+
 # making sure there is only missing exercise data for BL condition
 merged %>%
   filter(condition != "BL") %>%
@@ -56,3 +72,14 @@ merged %>%
     missing_exercise = sum(is.na(mean_hr)),
     pct_missing = round(missing_exercise/total_rows * 100, 1)
   )  
+
+# check which columns are dates stored as character
+merged %>%
+  select(where(is.character)) %>%
+  names()
+
+# convert date columns from character to Date
+merged <- merged %>%
+  mutate(across(c(date, cond_start, cond_end), as.Date))
+
+#write.csv(merged,"clean_merge_triple_dataset", row.names = FALSE)

@@ -57,22 +57,31 @@ obs_flag <- cgm %>%
 # glucose outliers
 names(cgm)
 
-# using range of 80-140 to account for range of time between meals
+# using range of 70-140 to account for range of time between meals
 summary(cgm$avg_glucose)
 summary(cgm$night_glucose)
 
 glucose_flag <- cgm %>% 
   mutate(
-    avg_g_flag = avg_glucose < 80 | avg_glucose > 140,
-    night_flag = night_glucose < 80 | night_glucose > 140
+    avg_g_flag = avg_glucose < 70 | avg_glucose > 140,
+    night_flag = night_glucose < 70 | night_glucose > 140
   ) %>%
   filter(avg_g_flag, night_flag) %>%
   select(everything(), avg_glucose, night_glucose,avg_g_flag, night_flag)
 
 
 # standard deviation flags - more nuanced (CV?)
+# flag for 75th quartile
 summary(cgm$sd_glucose)
 summary(cgm$night_sd_glucose)
 summary(cgm$day_sd_glucose)
 
+sd_glucose_flag <- cgm %>% 
+  mutate(
+    sd_g_flag = sd_glucose > 25,
+    sd_day_g_flag = day_sd_glucose > 25,
+    sd_night_g_flag = night_sd_glucose > 25
+  ) %>%
+  filter(sd_g_flag, sd_day_g_flag, sd_night_g_flag) %>%
+  select(everything(), sd_glucose, night_sd_glucose,day_sd_glucose, sd_g_flag, sd_day_g_flag, sd_night_g_flag)
 

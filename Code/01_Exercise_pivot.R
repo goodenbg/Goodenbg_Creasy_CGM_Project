@@ -54,6 +54,15 @@ n_distinct(ex_long$id)
 #check for duplicates
 sum(duplicated(ex_long)) # = 0
 
+class(ex_long$food_date)
+# standardize food_date to consistent datetime format
+ex_long <- ex_long %>%
+  mutate(food_date = format(food_date, "%Y-%m-%d %H:%M:%S"))
+
+#write clean dataset to new file
+write.csv(ex_long,"exercise_long", row.names = FALSE)
+
+
 # exclude this step to maintain dropped/missing participants until modeling stage
 #counting how many conditions each participant completed to filter out those with less than 4
 #ex_long %>% 
@@ -72,4 +81,3 @@ sum(duplicated(ex_long)) # = 0
 #n_distinct(ex_long$ID)
 
 
-#write_xlsx(ex_long, path = here("DataProcessed","Exercise_data_long.xlsx"))

@@ -223,7 +223,7 @@ n_distinct(cgm3$condition, na.rm = TRUE) # shoudl be 5 :)
 
 # manually assigning the ids that I know have suspicious missing dates
 # will remove all NAs except for these ids:
-keep_na_ids <- c("TAN-002", "TAN-012", "TAN-020", "TAN-022", "TAN-027")
+keep_na_ids <- c("TAN-020", "TAN-022", "TAN-027")
 
 # Testing with a flag before deleting
 cgm3 <- cgm3 %>%
@@ -238,8 +238,7 @@ cgm3_clean <- cgm3 %>%
 #manually remove a few leftover from keep_na_ids
 # remove specific rows by row number
 cgm3_clean <- cgm3_clean %>%
-  slice(-c(37, 38, 56, 57, 64:66, 162:164, 177, 182:184, 290, 291, 296,
-           297, 302, 303, 308, 309, 320:322))
+  slice(-c(262, 263,268, 269, 274,275, 280, 281, 292:294, 302:304, 307:309))
 
 #remove unneeded column
 cgm3_clean <- cgm3_clean[, !names(cgm3_clean) %in% c("remove")]
