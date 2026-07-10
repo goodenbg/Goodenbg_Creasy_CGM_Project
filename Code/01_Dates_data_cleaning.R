@@ -1,7 +1,7 @@
 ---
 title: "01_Dates_data_cleaning"
 author: "Gwen Goodenbour"
-date: "2026-06-10- 2026-06-30"
+date: "2026-06-10- 2026-07-10"
 ---
 # This R script cleans and merges dates for cgm data and subject dates
   
@@ -13,15 +13,21 @@ library(dplyr)
 library(tidyr)
 
 ################################################################################
-# ----- CLEANING SUBJECT DATES FILE -----
+# ----- CLEANING SUBJECT DATES FILE ----- 
+##############################################################################
+# multiple sheets
+# read in all three sheets
+cond_dates <- read_excel(here("DataRaw", "23-1388 Subject Dates REVISED.xlsx"), sheet = 1)
+ex_dates <- read_excel(here("DataRaw", "23-1388 Subject Dates REVISED.xlsx"), sheet = 2)
+diet_dates <- read_excel(here("DataRaw", "23-1388 Subject Dates REVISED.xlsx"), sheet = 3)
 
-dates<-read_excel(here("DataRaw", "23-1388 Subject Dates REVISED.xlsx"))
+# ----- 1. clean condition dates first: ----------------------------------------
 
 #CLEAN ID
-dates$id <- gsub("-", "", dates$`Study ID`)
+cond_dates$id <- gsub("-", "", cond_dates$`Study ID`)
 
 #CLEAN DATE RANGE
-dates <- dates %>%
+cond_dates <- cond_dates %>%
   separate(`Dates...4`, into = c("start_date", "end_date"), sep = "-") %>%
   mutate(
     start_date = as.Date(start_date, format = "%m/%d/%y"),
@@ -31,7 +37,7 @@ dates <- dates %>%
 #---- Further Subject Dates cleaning
 #names(dates)
 
-dates <- dates %>% # split condition date range into start and end dates
+cond_dates <- cond_dates %>% # split condition date range into start and end dates
   separate(`Dates...6`, into = c("cond1_start", "cond1_end"), sep = "-") %>%
   separate(`Dates...8`, into = c("cond2_start", "cond2_end"), sep = "-") %>%
   separate(`Dates...10`, into = c("cond3_start", "cond3_end"), sep = "-") %>%
@@ -42,27 +48,15 @@ dates <- dates %>% # split condition date range into start and end dates
                 ~ as.Date(.x, format = "%m/%d/%y")))
 #head(dates)
 
-
 #dates %>% select(`Study ID`, id) %>% head() # two id columns but structured differently
 # remove duplicate id column and rename Study ID to id
-dates <- dates %>%
+cond_dates <- cond_dates %>%
   select(-id) %>%
   rename(id = `Study ID`)
 
-########################################################################
-# ---- Determine whether or not to drop when modelling ------
-# remove dropout participants manually - replace with actual dropout IDs
-#drop <- c("TAN-009", "TAN-024", 'TAN-025',"TAN-027", "TAN-029")
-
-# filter out dropouts
-#dates <- dates %>%
- # filter(!id %in% drop)
-# --------------------------------------------------------------
-########################################################################
-
 # standardize naming convention further
 #ames(dates)
-dates <- dates %>% 
+cond_dates <- cond_dates %>% 
   rename(chamber_y_n = `Chamber (Y/N)`) %>% 
   rename(baseline = `Baseline`) %>% 
   rename(cond_1 = `Condition 1`) %>% 
@@ -71,50 +65,159 @@ dates <- dates %>%
   rename(cond_4 = `Condition 4`) %>% 
   rename(rep_cond = `Repeated Condition`) %>% 
   rename(notes = `NOTES`)
-# ---- REPLACING REPEATED CONDITIONS ----------------------------------
 
-# replace original condition dates with repeat dates for repeaters
-dates <- dates %>%
-  mutate(
-    # replace cond1 dates if cond_1 matches the repeated condition
-    cond1_start = if_else(!is.na(`rep_cond`) & cond_1 == `rep_cond`, 
-                          rep_start, cond1_start),
-    cond1_end   = if_else(!is.na(`rep_cond`) & cond_1 == `rep_cond`, 
-                          rep_end, cond1_end),
-    # replace cond2 dates if cond_2 matches the repeated condition
-    cond2_start = if_else(!is.na(`rep_cond`) & cond_2 == `rep_cond`, 
-                          rep_start, cond2_start),
-    cond2_end   = if_else(!is.na(`rep_cond`) & cond_2 == `rep_cond`, 
-                          rep_end, cond2_end),
-    # replace cond3 dates if cond_3 matches the repeated condition
-    cond3_start = if_else(!is.na(`rep_cond`) & cond_3 == `rep_cond`, 
-                          rep_start, cond3_start),
-    cond3_end   = if_else(!is.na(`rep_cond`) & cond_3 == `rep_cond`, 
-                          rep_end, cond3_end),
-    # replace cond4 dates if cond_4 matches the repeated condition
-    cond4_start = if_else(!is.na(`rep_cond`) & cond_4 == `rep_cond`, 
-                          rep_start, cond4_start),
-    cond4_end   = if_else(!is.na(`rep_cond`) & cond_4 == `rep_cond`, 
-                          rep_end, cond4_end)
-  )
 
-# verify the replacement worked for the 3 repeaters
-dates %>%
-  filter(!is.na(`rep_cond`)) %>%
-  select(id, `rep_cond`, rep_start, rep_end,
-         cond_1, cond1_start, cond1_end,
-         cond_2, cond2_start, cond2_end,
-         cond_3, cond3_start, cond3_end,
-         cond_4, cond4_start, cond4_end) #YESSS
 
-#---------------------------
+# ----- 2. clean exercise dates ----------------------------------------------
 
-#write clean dataset to new file
-#library(writexl)
-#write.csv(dates,"Subject_dates_clean", row.names = FALSE)
+#CLEAN ID
+ex_dates$id <- gsub("-", "", ex_dates$`Study ID`)
 
-##########################################################
-#-----------FIXING MISSING DATES IN CGM2------------------
+#CLEAN DATE RANGE
+ex_dates <- ex_dates %>%
+  # separate date ranges for each condition
+  separate(`Dates...4`,  into = c("cond1_start", "cond1_end"),   sep = "-") %>%
+  separate(`Dates...10`, into = c("cond2_start", "cond2_end"), sep = "-") %>%
+  separate(`Dates...16`, into = c("cond3_start", "cond3_end"), sep = "-") %>%
+  separate(`Dates...22`, into = c("cond4_start", "cond4_end"), sep = "-") %>%
+  separate(`Dates...28`, into = c("rep_start",   "rep_end"),   sep = "-") %>%
+  # convert to Date format
+  mutate(across(ends_with("_start") | ends_with("_end"),
+                ~ as.Date(.x, format = "%m/%d/%y")))
+
+#dates %>% select(`Study ID`, id) %>% head() # two id columns but structured differently
+# remove duplicate id column and rename Study ID to id
+ex_dates <- ex_dates %>%
+  select(-id) %>%
+  rename(id = `Study ID`)
+
+names(ex_dates)
+ex_dates <- ex_dates %>% 
+  rename(chamber_y_n = `Chamber (Y/N)`) %>% 
+  rename(cond_1 = `Condition 1`) %>% 
+  rename(cond_2 = `Condition 2`) %>% 
+  rename(cond_3 = `Condition 3`) %>% 
+  rename(cond_4 = `Condition 4`) %>% 
+  rename(rep_cond = `Repeated Condition`) %>% 
+  rename(notes = `NOTES`)
+
+
+# ----- 3. clean diet dates ----------------------------------------------
+#CLEAN ID
+diet_dates$id <- gsub("-", "", diet_dates$`Study ID`)
+
+#CLEAN DATE RANGE
+diet_dates <- diet_dates %>%
+  # separate date ranges for each condition
+  separate(`Dates...4`,  into = c("cond1_start", "cond1_end"),   sep = "-") %>%
+  separate(`Dates...9`, into = c("cond2_start", "cond2_end"), sep = "-") %>%
+  separate(`Dates...14`, into = c("cond3_start", "cond3_end"), sep = "-") %>%
+  separate(`Dates...19`, into = c("cond4_start", "cond4_end"), sep = "-") %>%
+  separate(`Dates...24`, into = c("rep_start",   "rep_end"),   sep = "-") %>%
+  # convert to Date format
+  mutate(across(ends_with("_start") | ends_with("_end"),
+                ~ as.Date(.x, format = "%m/%d/%y")))
+
+#dates %>% select(`Study ID`, id) %>% head() # two id columns but structured differently
+# remove duplicate id column and rename Study ID to id
+diet_dates <- diet_dates %>%
+  select(-id) %>%
+  rename(id = `Study ID`)
+
+names(diet_dates)
+diet_dates <- diet_dates %>% 
+  rename(chamber_y_n = `Chamber (Y/N)`) %>% 
+  rename(cond_1 = `Condition 1`) %>% 
+  rename(cond_2 = `Condition 2`) %>% 
+  rename(cond_3 = `Condition 3`) %>% 
+  rename(cond_4 = `Condition 4`) %>% 
+  rename(rep_cond = `Repeated Condition`) %>% 
+  rename(notes = `NOTES`)
+
+
+# ---- REPLACE REPEATED CONDITIONS -----
+# function to replace repeated condition dates
+rep_repeated_cond <- function(df) {
+  df %>%
+    mutate(
+      # replace cond1 dates if cond_1 matches the repeated condition
+      cond1_start = if_else(!is.na(rep_cond) & cond_1 == rep_cond, rep_start, cond1_start),
+      cond1_end   = if_else(!is.na(rep_cond) & cond_1 == rep_cond, rep_end,   cond1_end),
+      # replace cond2 dates if cond_2 matches the repeated condition
+      cond2_start = if_else(!is.na(rep_cond) & cond_2 == rep_cond, rep_start, cond2_start),
+      cond2_end   = if_else(!is.na(rep_cond) & cond_2 == rep_cond, rep_end,   cond2_end),
+      # replace cond3 dates if cond_3 matches the repeated condition
+      cond3_start = if_else(!is.na(rep_cond) & cond_3 == rep_cond, rep_start, cond3_start),
+      cond3_end   = if_else(!is.na(rep_cond) & cond_3 == rep_cond, rep_end,   cond3_end),
+      # replace cond4 dates if cond_4 matches the repeated condition
+      cond4_start = if_else(!is.na(rep_cond) & cond_4 == rep_cond, rep_start, cond4_start),
+      cond4_end   = if_else(!is.na(rep_cond) & cond_4 == rep_cond, rep_end,   cond4_end)
+    )
+}
+
+# apply to each sheet
+cond_dates  <- rep_repeated_cond(cond_dates)
+ex_dates    <- rep_repeated_cond(ex_dates)
+diet_dates  <- rep_repeated_cond(diet_dates)
+##############################################################################
+
+# Making naming convention just a little more intuitive
+# (tried clean_names with janitor but was still more confusing than desired)
+names(ex_dates)
+ex_dates <- ex_dates %>% 
+  rename(ex1_1 = `Exercise 1...5`) %>% 
+  rename(ex1_2 = `Exercise 2...6`) %>%  
+  rename(ex1_3 = `Exercise 3...7`) %>% 
+  rename(ex1_4 = `Exercise 4...8`) %>%
+  
+  rename(ex2_1 = `Exercise 1...11`) %>% 
+  rename(ex2_2 = `Exercise 2...12`) %>%  
+  rename(ex2_3 = `Exercise 3...13`) %>% 
+  rename(ex2_4 = `Exercise 4...14`) %>% 
+  
+  rename(ex3_1 = `Exercise 1...17`) %>% 
+  rename(ex3_2 = `Exercise 2...18`) %>%  
+  rename(ex3_3 = `Exercise 3...19`) %>% 
+  rename(ex3_4 = `Exercise 4...20`) %>%
+  
+  rename(ex4_1 = `Exercise 1...23`) %>% 
+  rename(ex4_2 = `Exercise 2...24`) %>%  
+  rename(ex4_3 = `Exercise 3...25`) %>% 
+  rename(ex4_4 = `Exercise 4...26`) %>% 
+
+  rename(exrep_1 = `Exercise 1...29`) %>% 
+  rename(exrep_2 = `Exercise 2...30`) %>%  
+  rename(exrep_3 = `Exercise 3...31`) %>% 
+  rename(exrep_4 = `Exercise 4...32`) 
+  
+names(diet_dates)
+diet_dates <- diet_dates %>% 
+  rename(diet1_1 = `Diet Day 1...5`) %>% 
+  rename(diet1_2 = `Diet Day 2...6`) %>%  
+  rename(diet1_3 = `Diet Day 3...7`) %>% 
+  
+  rename(diet2_1 = `Diet Day 1...10`) %>% 
+  rename(diet2_2 = `Diet Day 2...11`) %>%  
+  rename(diet2_3 = `Diet Day 3...12`) %>% 
+  
+  rename(diet3_1 = `Diet Day 1...15`) %>% 
+  rename(diet3_2 = `Diet Day 2...16`) %>%  
+  rename(diet3_3 = `Diet Day 3...17`) %>% 
+  
+  rename(diet4_1 = `Diet Day 1...20`) %>% 
+  rename(diet4_2 = `Diet Day 2...21`) %>%  
+  rename(diet4_3 = `Diet Day 3...22`) %>%
+  
+  rename(dietrep4_1 = `Diet Day 1...25`) %>% 
+  rename(dietrep4_2 = `Diet Day 2...26`) %>%  
+  rename(dietrep4_3 = `Diet Day 3...27`) 
+#------------------------------------------------------------------------------
+
+
+
+    #PICK UP NEXT: Pivot each sheet long and then bind
+
+
 
 #pivot dates to long format - one row per participant per condition
 # pivot dates to long format including baseline and all 4 conditions
@@ -146,10 +249,14 @@ dates_long <- dates %>%
   # keep only relevant columns
   select(id, chamber_y_n,condition, cond_num, cond_start, cond_end, cond_num, notes)
 
-#############################################################################################################
+#write clean dataset to new file
+#library(writexl)
+#write.csv(dates,"Subject_dates_clean", row.names = FALSE)
 
-#something is not going right with the merge!
+##########################################################
+#-----------FIXING MISSING DATES IN CGM2------------------
 
+#################################################################################
 
 # READ IN CGM DATA
 cgm<-read_sas(here("DataProcessed", "analysis_v20260609_REVISED"))
@@ -242,6 +349,8 @@ cgm3_clean <- cgm3_clean %>%
 
 #remove unneeded column
 cgm3_clean <- cgm3_clean[, !names(cgm3_clean) %in% c("remove")]
+
+
 
 #write clean dataset to new file
 #write.csv(cgm3_clean,"cgm3_dated", row.names = FALSE)

@@ -60,7 +60,7 @@ ex_long <- ex_long %>%
   mutate(food_date = format(food_date, "%Y-%m-%d %H:%M:%S"))
 
 #write clean dataset to new file
-write.csv(ex_long,"exercise_long", row.names = FALSE)
+#write.csv(ex_long,"exercise_long", row.names = FALSE)
 
 
 # exclude this step to maintain dropped/missing participants until modeling stage
