@@ -1,16 +1,18 @@
 ---
-title: "01_Dates_data_cleaning"
+title: "01.1_Dates_data_cleaning"
 author: "Gwen Goodenbour"
 date: "2026-06-10- 2026-07-10"
 ---
-# This R script cleans and merges dates for cgm data and subject dates
+
+# This R script cleans all three sheets of the Subject dates file in prep for 
+  # pivot long and merge with cgm
   
-    
 library(haven)
 library(readxl)
 library(here)
 library(dplyr)
 library(tidyr)
+library(lubridate)
 
 ################################################################################
 # ----- CLEANING SUBJECT DATES FILE ----- 
@@ -211,148 +213,112 @@ diet_dates <- diet_dates %>%
   rename(dietrep4_1 = `Diet Day 1...25`) %>% 
   rename(dietrep4_2 = `Diet Day 2...26`) %>%  
   rename(dietrep4_3 = `Diet Day 3...27`) 
-#------------------------------------------------------------------------------
 
+# ----- Replace repeated diet and exercise dates -----
+# check the class of each ex1 column
+ex_dates %>% select(matches("^ex1")) %>% sapply(class)
 
-
-    #PICK UP NEXT: Pivot each sheet long and then bind
-
-
-
-#pivot dates to long format - one row per participant per condition
-# pivot dates to long format including baseline and all 4 conditions
-dates_long <- dates %>%
-  pivot_longer(
-    cols = c(baseline, cond_1, cond_2, cond_3, cond_4),
-    names_to = "cond_num",
-    values_to = "condition"
-  ) %>%
-  # match each condition to its correct start and end dates
+# fixing Excel dates issue
+ex_dates <- ex_dates %>%
   mutate(
-    cond_start = case_when(
-      cond_num == "baseline" ~ start_date,
-      cond_num == "cond_1"   ~ cond1_start,
-      cond_num == "cond_2"   ~ cond2_start,
-      cond_num == "cond_3"   ~ cond3_start,
-      cond_num == "cond_4"   ~ cond4_start,
-      cond_num == "rep_cond" ~ rep_start
-    ),
-    cond_end = case_when(
-      cond_num == "baseline" ~ end_date,
-      cond_num == "cond_1"   ~ cond1_end,
-      cond_num == "cond_2"   ~ cond2_end,
-      cond_num == "cond_3"   ~ cond3_end,
-      cond_num == "cond_4"   ~ cond4_end,
-      cond_num == "rep_cond" ~ rep_end
-    )
-  ) %>%
-  # keep only relevant columns
-  select(id, chamber_y_n,condition, cond_num, cond_start, cond_end, cond_num, notes)
-
-#write clean dataset to new file
-#library(writexl)
-#write.csv(dates,"Subject_dates_clean", row.names = FALSE)
-
-##########################################################
-#-----------FIXING MISSING DATES IN CGM2------------------
-
-#################################################################################
-
-# READ IN CGM DATA
-cgm<-read_sas(here("DataProcessed", "analysis_v20260609_REVISED"))
-
-
-# LEFT JOIN
-# WHEN JOINING, NEED TO HAVE COMMON VARIABLES
-cgm2 <- cgm %>%
-  left_join(
-    dates %>% select(id, start_date, end_date, baseline),
-    by = join_by(id, between(date, start_date, end_date))
+    ex1_1 = as.Date(ex1_1),
+    ex1_2 = as.Date(as.numeric(ex1_2), origin = "1899-12-30"),
+    ex1_3 = as.Date(as.numeric(ex1_3), origin = "1899-12-30"),
+    ex1_4 = as.Date(as.numeric(ex1_4), origin = "1899-12-30")
   )
-# add dash to cgm2 id to match other files format
-cgm2 <- cgm2 %>%
-  mutate(id = sub("(TAN)(\\d+)", "\\1-\\2", id))
-#View(cgm2)
 
-#write to new file++++
-#write.csv(cgm2, "cgm_dates_clean", row.names = FALSE)
-
-# check TAN-001 cgm dates vs condition date ranges
-cgm2 %>% 
-  filter(id == "TAN-004") %>% 
-  select(id, date) %>% 
-  print(n = Inf)
-
-dates_long %>% 
-  filter(id == "TAN-004")
-
-# remove old start_date and end_date from previous join
-cgm2 <- cgm2 %>%
-  select(-start_date, -end_date, -baseline)
-
-# retry the join
-cgm3 <- cgm2 %>%
-  left_join(
-    dates_long,
-    by = join_by(id, between(date, cond_start, cond_end))
+# replacing repeated exercise dates
+ex_dates <- ex_dates %>%
+  mutate(
+    ex1_1 = if_else(id == "TAN-002", as.Date(NA), ex1_1),
+    ex1_2 = if_else(id == "TAN-002", as.Date("2025-01-13"), ex1_2),
+    ex1_3 = if_else(id == "TAN-002", as.Date("2025-01-14"), ex1_3),
+    ex1_4 = if_else(id == "TAN-002", as.Date("2025-01-15"), ex1_4)
   )
 
 # verify
-head(cgm3)
+ex_dates %>% 
+  filter(id == "TAN-002") %>% 
+  select(id, ex1_1, ex1_2, ex1_3, ex1_4) 
 
-
-
-#---- Check for missing condition dates between populated ones ----
-
-n_distinct(cgm3$condition, na.rm = TRUE) # shoudl be 5 :)
-
-# flag and separate NAs: leading/trailing (remove) vs floating (keep, verify with PI)
-
-#cgm3 <- cgm3 %>% 
-  #group_by(id) %>% 
-  #arrange(id, date) %>% 
-  #mutate(
-    # find first and last date with known condition for each participant
-    #first = min(date[!is.na(condition)], na.rm = TRUE), 
-    #last = max(date[!is.na(condition)], na.rm = TRUE),
-    
-    # flag rows to remove if they are outside condition range
-    #remove_flag = is.na(condition) &
-      #(date < first | date > last)
-  #) %>% 
-  #ungroup()
-
-#check how many would be removed
-#cgm3 %>% count(remove_flag)
-# this approach is both too specifci and too nonspecific for what I want: 
-# different approach below --------------------------------------------
-
-
-# manually assigning the ids that I know have suspicious missing dates
-# will remove all NAs except for these ids:
-keep_na_ids <- c("TAN-020", "TAN-022", "TAN-027")
-
-# Testing with a flag before deleting
-cgm3 <- cgm3 %>%
+ex_dates <- ex_dates %>%
   mutate(
-    remove = !(id %in% keep_na_ids) &
-      (is.na(cond_start) | is.na(cond_end)))
+    ex1_1 = if_else(id == "TAN-012", as.Date("2025-03-10"), ex1_1),
+    ex1_2 = if_else(id == "TAN-012", as.Date("2025-03-11"), ex1_2),
+    ex1_3 = if_else(id == "TAN-012", as.Date("2025-03-12"), ex1_3),
+    ex1_4 = if_else(id == "TAN-012", as.Date("2025-03-13"), ex1_4)
+  )
 
-# ^ looks good lets remove those unnecessary NAs:
-cgm3_clean <- cgm3 %>%
-  filter(!remove) 
+# verify
+ex_dates %>% 
+  filter(id == "TAN-024") %>% 
+  select(id, ex1_1, ex1_2, ex1_3, ex1_4)
 
-#manually remove a few leftover from keep_na_ids
-# remove specific rows by row number
-cgm3_clean <- cgm3_clean %>%
-  slice(-c(262, 263,268, 269, 274,275, 280, 281, 292:294, 302:304, 307:309))
+ex_dates <- ex_dates %>%
+  mutate(
+    ex1_1 = if_else(id == "TAN-024", as.Date("2025-09-08"), ex1_1),
+    ex1_2 = if_else(id == "TAN-024", as.Date("2025-09-09"), ex1_2),
+    ex1_3 = if_else(id == "TAN-024", as.Date("2025-09-10"), ex1_3),
+    ex1_4 = if_else(id == "TAN-024", as.Date("2025-09-11"), ex1_4)
+  )
 
-#remove unneeded column
-cgm3_clean <- cgm3_clean[, !names(cgm3_clean) %in% c("remove")]
+# verify
+ex_dates %>% 
+  filter(id == "TAN-024") %>% 
+  select(id, ex1_1, ex1_2, ex1_3, ex1_4)
 
+# replacing repeated diet dates -----
 
+# check the class of each diet1 column
+diet_dates %>% select(matches("^diet1")) %>% sapply(class)
 
-#write clean dataset to new file
-#write.csv(cgm3_clean,"cgm3_dated", row.names = FALSE)
+# fixing Excel date issue
+diet_dates <- diet_dates %>%
+  mutate(
+    diet1_1 = as.Date(diet1_1),
+    diet1_2 = as.Date(diet1_2),
+    diet1_3 = as.Date(as.numeric(diet1_3), origin = "1899-12-30")
+  )
 
-# ------------------------------------------
+# replacing repeated cond diet dates
+
+diet_dates <- diet_dates %>%
+  mutate(
+    diet1_1 = if_else(id == "TAN-002", as.Date("2025-01-14"), diet1_1),
+    diet1_2 = if_else(id == "TAN-002", as.Date("2025-01-15"), diet1_2),
+    diet1_3 = if_else(id == "TAN-002", as.Date("2025-01-16"), diet1_3)
+  )
+
+# verify
+diet_dates %>% 
+  filter(id == "TAN-002") %>% 
+  select(id, diet1_1, diet1_2, diet1_3)
+
+diet_dates <- diet_dates %>%
+  mutate(
+    diet1_1 = if_else(id == "TAN-012", as.Date("2025-04-15"), diet1_1),
+    diet1_2 = if_else(id == "TAN-012", as.Date("2025-04-16"), diet1_2),
+    diet1_3 = if_else(id == "TAN-012", as.Date("2025-04-17"), diet1_3)
+  )
+
+# verify
+diet_dates %>% 
+  filter(id == "TAN-012") %>% 
+  select(id, diet1_1, diet1_2, diet1_3)
+
+diet_dates <- diet_dates %>%
+  mutate(
+    diet1_1 = if_else(id == "TAN-024", as.Date("2025-09-10"), diet1_1),
+    diet1_2 = if_else(id == "TAN-024", as.Date("2025-09-11"), diet1_2),
+    diet1_3 = if_else(id == "TAN-024", as.Date("2025-09-12"), diet1_3)
+  )
+
+# verify
+diet_dates %>% 
+  filter(id == "TAN-024") %>% 
+  select(id, diet1_1, diet1_2, diet1_3)
+
+#write clean datasets to new file -> read into pivot file
+#write.csv(cond_dates,"pre_pivot_cond_dates", row.names = FALSE)
+#write.csv(ex_dates,"pre_pivot_ex_dates", row.names = FALSE)
+#write.csv(diet_dates,"pre_pivot_diet_dates", row.names = FALSE)

@@ -10,7 +10,7 @@ library(lubridate)
 library(hms)
 
 # cleaned cgm data
-cgm <- read.csv(here("DataProcessed", "cgm3_dated"))
+cgm <- read.csv(here("DataProcessed", "cgm_dated"))
 
 # cleaned/long exercise data
 ex <- read.csv(here("DataProcessed","exercise_long"))
