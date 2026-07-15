@@ -382,5 +382,79 @@ library(grateful)
 #cite_packages(output = "paragraph",  # outputs a citation paragraph
               #out.dir = here("Dissemination"))  # saves output folder
 
+# ------------------------------
+cgm <- cgm %>%
+  mutate(
+    cond_start = as.Date(cond_start),
+    cond_end   = as.Date(cond_end)
+  )
 
+# confirm
+class(cgm$date); class(cgm$cond_start)
+# cgm already has cond_start - no join needed
+cgm_days2 <- cgm %>%
+  filter(!is.na(avg_glucose)) %>%
+  mutate(day_num = as.numeric(date - cond_start) + 1) %>%
+  select(id, condition, day_num)
+
+# ex_long and diet_long still need the join
+ex_days2 <- ex_long %>%
+  filter(exercise_day == 1) %>%
+  left_join(cond_long %>% select(id, condition, cond_start),
+            by = c("id", "condition")) %>%
+  mutate(day_num = as.numeric(date - cond_start) + 1) %>%
+  select(id, condition, day_num)
+
+diet_days2 <- diet_long %>%
+  filter(diet_day_flag == 1) %>%
+  left_join(cond_long %>% select(id, condition, cond_start),
+            by = c("id", "condition")) %>%
+  mutate(day_num = as.numeric(date - cond_start) + 1) %>%
+  select(id, condition, day_num)
+
+# plot
+ggplot() +
+  geom_point(data = cgm_days2,
+             aes(x = day_num, y = condition, colour = "CGM data"),
+             shape = 15, size = 3) +
+  geom_point(data = ex_days2,
+             aes(x = day_num, y = condition, colour = "Exercise day"),
+             shape = 17, size = 2.5,
+             position = position_nudge(y = 0.25)) +
+  geom_point(data = diet_days2,
+             aes(x = day_num, y = condition, colour = "Diet day"),
+             shape = 16, size = 2.5,
+             position = position_nudge(y = -0.25)) +
+  facet_wrap(~ id, ncol = 2) +          # fewer columns = wider facets
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "top",
+        panel.grid.minor = element_blank(),
+        axis.text.y = element_text(size = 8),
+        strip.text = element_text(face = "bold")) +
+  scale_colour_manual(
+    name = NULL,
+    values = c("CGM data" = "#4C72B0", 
+               "Exercise day" = "#DD8452", 
+               "Diet day" = "#55A868")
+  ) +
+  scale_x_continuous(breaks = 1:10) +
+  labs(x = "Day within condition", y = NULL,
+       title = "Data coverage by study day") +
+  theme_minimal(base_size = 9) +
+  theme(legend.position = "top",
+        panel.grid.minor = element_blank())
+
+#ggsave(here("coverage_map.png"), width = 14, height = 10, dpi = 300)
+
+coverage <- cgm %>%
+  filter(!is.na(avg_glucose)) %>%
+  count(id, condition, name = "n_cgm_days")
+
+ggplot(coverage, aes(x = condition, y = id, fill = n_cgm_days)) +
+  geom_tile(colour = "white") +
+  geom_text(aes(label = n_cgm_days), size = 3) +
+  scale_fill_viridis_c(option = "D") +
+  labs(x = NULL, y = NULL, fill = "CGM days",
+       title = "CGM Date Data by Participant and Condition") +
+  theme_minimal()
 

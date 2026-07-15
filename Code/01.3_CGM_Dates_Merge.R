@@ -83,6 +83,8 @@ cgm2_clean <- cgm2 %>%
 #remove unneeded column
 cgm2_clean <- cgm2_clean[, !names(cgm2_clean) %in% c("remove")]
 
+#write.csv(cgm2_clean,"cgm&condition_dates", row.names = FALSE)
+
 # ----- JOIN OTHER TWO DATES TO CGM & Condition Dates -----
 
 ex_long <- read.csv(here("DataProcessed", "ex_dates_long"))
@@ -99,11 +101,11 @@ diet_long <- diet_long %>%
 cgm_dated <- cgm2_clean %>%
   full_join(
     ex_long %>% select(id, condition, date, exercise_day),
-    by = c("id", "condition", "date")
+    by = c("id", "condition")
   ) %>%
   full_join(
     diet_long %>% select(id, condition, date, diet_day_flag),
-    by = c("id", "condition", "date")
+    by = c("id", "condition")
   ) %>%
   mutate(
     exercise_day  = replace_na(exercise_day, 0),

@@ -8,11 +8,12 @@ date: "2026-07-06"
 # need to check the minute level data to see if it persisted-
 # flaged the days but need to check the raw associated day
 
+library(here)
 library(dplyr)
 library(lubridate)
 library(hms)
 
-cgm <- read.csv(here("DataProcessed", "cgm3_dated"))
+cgm <- read.csv(here("DataProcessed", "cgm_dated"))
   
 # using range of 70-140 to account for range of time between meals
 summary(cgm$avg_glucose)
