@@ -1,0 +1,236 @@
+---
+title: "06_Exploring_diet_vs_nondiet_comtrolled"
+author: "Gwen Goodenbour"
+date: "2026-07-15"
+output: html_document
+---
+
+# ----- GLUCOSE ANALYSIS: Diet-controlled vs non-diet-controlled days -----
+# This script reads in cleaned CGM data (averages), combines each glucose day to
+# its study condition and diet-control status, then 
+# compares glucose overall and per condition
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# all of the packages I have been using just in case
+library(haven)
+library(readxl)
+library(here)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(gt)
+library(ggplot2)
+library(scales)
+library(gtsummary)
+```
+
+
+```{r, read in data}
+# cgm data
+cgm <- read_sas(here("DataProcessed", "analysis_v20260609_REVISED"))
+
+# condition dates
+cond_long <- read.csv(here("DataProcessed", "cond_dates_long"))
+
+# diet dates
+diet_long <- read.csv(here("DataProcessed", "diet_dates_long"))
+```
+
+```{r, standardize formatting}
+# match the dashed format used in cond_long and diet_long.
+cgm <- cgm %>%
+  mutate(
+    date = as.Date(date),
+    id = sub("(TAN)(\\d+)", "\\1-\\2", id)
+  )
+
+# read.csv reads dates as character
+# convert to Date
+cond_long <- cond_long %>%
+  mutate(
+    cond_start = as.Date(cond_start, format = "%Y-%m-%d"),
+    cond_end = as.Date(cond_end, format = "%Y-%m-%d")
+  )
+
+diet_long <- diet_long %>%
+  mutate(date = as.Date(date))
+
+# join cgm and cond_dates 
+cgm <- cgm %>%
+  left_join(
+    cond_long %>% select(id, condition, cond_num, cond_start, cond_end),
+    by = join_by(id, between(date, cond_start, cond_end))
+  )
+
+```
+
+```{r, build out diet-controlled vs non-diet controlled}
+# Attach the diet-day flag by matching on id + condition + exact date
+# CV (coefficient of variation = SD/mean*100) is computed 
+
+glucose_b <- cgm %>%
+  left_join(
+    diet_long %>% select(id, condition, date, diet_day_flag),
+    by = c("id", "condition", "date")
+  ) %>%
+  mutate(
+    diet_day_flag = replace_na(diet_day_flag, 0),
+    diet_label = if_else(diet_day_flag == 1, "Diet-controlled", "Non-diet"),
+    cv_24h = sd_glucose / avg_glucose * 100,
+    cv_day  = day_sd_glucose / day_glucose * 100,
+    cv_night = night_sd_glucose / night_glucose * 100
+  )
+# check- Baseline should show few/no diet-controlled days since BL wasn't diet-controlled.
+glucose_b %>% count(condition, diet_label)
+
+```
+
+```{r, day-level descriptives}
+# treats each day as independent, but ignores that days are attached to participants
+# just to see descriptives (unpaired)
+
+# diet vs non-diet across all conditions combined.
+days_compare <- glucose_b %>%
+  group_by(diet_label) %>%
+  summarise(
+    n_days  = n(),
+    mean_24h = mean(avg_glucose, na.rm = TRUE),
+    sd_24h = mean(sd_glucose, na.rm = TRUE),
+    cv_24h = mean(cv_24h, na.rm = TRUE),
+    mean_day = mean(day_glucose, na.rm = TRUE),
+    mean_night  = mean(night_glucose, na.rm = TRUE),
+    .groups = "drop"
+  )
+days_compare
+
+# diet vs non-diet days, one row per condition x diet status.
+
+cond_compare <- glucose_b %>%
+  group_by(condition, diet_label) %>%
+  summarise(
+    n_days  = n(),
+    mean_24h  = mean(avg_glucose, na.rm = TRUE),
+    sd_24h  = mean(sd_glucose, na.rm = TRUE),
+    cv_24h  = mean(cv_24h, na.rm = TRUE),
+    mean_day  = mean(day_glucose, na.rm = TRUE),
+    mean_night  = mean(night_glucose, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(condition, diet_label)
+
+cond_compare
+
+# plot 
+ggplot(glucose_b%>% filter(!is.na(condition)),
+       aes(x = condition, y = avg_glucose, fill = diet_label)) +
+  geom_boxplot(position = position_dodge(0.8), alpha = 0.7) +
+  labs(x = NULL, y = "24h mean glucose (mg/dL)", fill = NULL,
+       title = "Glucose on diet-controlled vs non-diet days, by condition") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+
+```
+```{r, participant-paired comparison}
+# accounts for repeated measures
+# one day per participant per, plus diet mean and non diet mean per condition
+paired <- glucose_b %>%
+  filter(!is.na(condition)) %>%
+  group_by(id, condition, diet_label) %>%
+  summarise(
+    mean_24h = mean(avg_glucose, na.rm = TRUE),
+    mean_day  = mean(day_glucose, na.rm = TRUE),
+    mean_night = mean(night_glucose, na.rm = TRUE),
+    cv_24h = mean(cv_24h, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+paired_by_cond <- paired %>%
+  select(id, condition, diet_label, mean_24h) %>%
+  pivot_wider(names_from = diet_label, values_from = mean_24h) %>%
+  filter(!is.na(`Diet-controlled`) & !is.na(`Non-diet`))
+
+paired_by_cond %>% count(condition)
+
+# reshaping data layout - diet and non diet side-by-side
+# computes difference within each participant
+paired_by_cond <- paired %>%
+  select(id, condition, diet_label, mean_24h) %>%
+  pivot_wider(names_from = diet_label, values_from = mean_24h) %>%
+  filter(!is.na(`Diet-controlled`) & !is.na(`Non-diet`))
+
+# paired n per condition
+paired_diff %>% count(condition)
+
+# plot: lines connect same participant between diet and non-diet controlled
+# slopes represent difference in glucose
+ggplot(paired %>% filter(!is.na(condition)),
+       aes(x = diet_label, y = mean_24h, group = id)) +
+  geom_line(alpha = 0.4, colour = "grey50") +
+  geom_point(aes(colour = diet_label), size = 2) +
+  facet_wrap(~ condition, nrow = 1) +
+  labs(x = NULL, y = "24h mean glucose (mg/dL)",
+       title = "Participant-Paired Glucose: diet-controlled vs non-diet days") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 30, hjust = 1))
+
+
+```
+
+```{r, paired t-test}
+# one diet and one non diet mean per participant averaged across all conditions
+paired_overall <- glucose_b %>%
+  filter(!is.na(condition)) %>%
+  group_by(id, diet_label) %>%
+  summarise(mean_24h = mean(avg_glucose, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = diet_label, values_from = mean_24h) %>%
+  filter(!is.na(`Diet-controlled`) & !is.na(`Non-diet`))
+
+nrow(paired_overall)
+
+t.test(paired_overall$`Diet-controlled`,
+       paired_overall$`Non-diet`,
+       paired = TRUE)
+
+# Checking with a single-condition (Fasted-AM), first
+
+fam <- paired_by_cond %>% filter(condition == "Fasted-AM")
+nrow(fam)
+
+t.test(fam$`Diet-controlled`, fam$`Non-diet`, paired = TRUE)
+
+
+#check distributions
+# distribution of within-person differences per condition
+
+```
+```{r}
+condition_tests <- paired_by_cond %>%
+  group_by(condition) %>%
+  filter(n() >= 2) %>%
+  
+  # group_modify applies the test per condition group
+  group_modify(~ {
+    test <- t.test(.x$`Diet-controlled`, .x$`Non-diet`, paired = TRUE)
+    tibble(
+      n_pairs = nrow(.x),
+      # mean_diff and its 95% CI (not just the p-value
+      mean_diff = mean(.x$`Diet-controlled` - .x$`Non-diet`),
+      ci_low  = test$conf.int[1],
+      ci_high = test$conf.int[2],
+      p_value = test$p.value
+    )
+  }) %>%
+  ungroup()
+
+condition_tests
+
+# adjust for inflated false-positive by testing conditions separately - correct with Holm
+condition_tests <- condition_tests %>%
+  mutate(p_adjusted = p.adjust(p_value, method = "holm"))
+
+condition_tests
+```
+
