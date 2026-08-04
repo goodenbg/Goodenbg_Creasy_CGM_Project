@@ -1,5 +1,5 @@
 ---
-title: "01_Cleaning_ CGM_Dates"
+title: "01.3_CGM_Dates_Merge"
 author: "Gwen Goodenbour"
 date: "2026-07-13"
 ---
@@ -98,22 +98,95 @@ ex_long <- ex_long %>%
 diet_long <- diet_long %>%
   mutate(date = as.Date(date))
 # join exercise day flags onto cgm3
+
 cgm_dated <- cgm2_clean %>%
   full_join(
     ex_long %>% select(id, condition, date, exercise_day),
-    by = c("id", "condition")
+    by = c("id", "condition", "date")
   ) %>%
   full_join(
     diet_long %>% select(id, condition, date, diet_day_flag),
-    by = c("id", "condition")
+    by = c("id", "condition", "date")
   ) %>%
   mutate(
     exercise_day  = replace_na(exercise_day, 0),
     diet_day_flag = replace_na(diet_day_flag, 0)
   )
 
+
+# checks n balances
+nrow(cgm_dated)   # 501
+nrow(cgm2_clean) # 395
+
+# how many rows have no CGM data (came only from exercise/diet)?
+cgm_dated %>%
+  summarise(
+    total = n(),
+    no_cgm = sum(is.na(avg_glucose)),
+    has_cgm = sum(!is.na(avg_glucose)) # shoudl be 395- yep
+  )
+# looks good
+
 #write clean dataset to new file
-#write.csv(cgm_dated,"cgm_dated", row.names = FALSE)
+# write.csv(cgm_dated,"cgm_dated", row.names = FALSE)
 
 # ------------------------------------------
 # which participants have unmatched exercise dates?
+
+# exercise days with no matching CGM row
+ex_orphans <- ex_long %>%
+  anti_join(cgm2_clean, by = c("id", "condition", "date"))
+nrow(ex_orphans)
+
+# diet days with no matching CGM row
+diet_orphans <- diet_long %>%
+  anti_join(cgm2_clean, by = c("id", "condition", "date"))
+nrow(diet_orphans)
+
+
+# how many orphans are just missing dates (real absence, not coverage failure)?
+sum(is.na(ex_orphans$date))
+sum(is.na(diet_orphans$date))
+
+# of those with a real date, do they fall inside their condition window?
+ex_orphans %>%
+  filter(!is.na(date)) %>%
+  left_join(cond_long %>% select(id, condition, cond_start, cond_end),
+            by = c("id", "condition")) %>%
+  mutate(in_window = date >= cond_start & date <= cond_end) %>%
+  count(in_window)
+
+diet_orphans %>%
+  filter(!is.na(date)) %>%
+  left_join(cond_long %>% select(id, condition, cond_start, cond_end),
+            by = c("id", "condition")) %>%
+  mutate(in_window = date >= cond_start & date <= cond_end) %>%
+  count(in_window)
+
+ex_orphans %>%
+  filter(!is.na(date)) %>%
+  left_join(cond_long %>% select(id, condition, cond_start, cond_end),
+            by = c("id", "condition")) %>%
+  filter(date < cond_start | date > cond_end) %>%
+  mutate(days_off = if_else(date < cond_start,
+                            as.numeric(date - cond_start),
+                            as.numeric(date - cond_end))) %>%
+  select(id, condition, date, cond_start, cond_end, days_off) %>%
+  arrange(desc(abs(days_off))) %>%
+  as.data.frame()
+
+ex_errors <- ex_orphans %>%
+  filter(!is.na(date)) %>%
+  left_join(cond_long %>% select(id, condition, cond_start, cond_end),
+            by = c("id", "condition")) %>%
+  filter(date < cond_start | date > cond_end) %>%
+  mutate(
+    days_off = if_else(date < cond_start,
+                       as.numeric(date - cond_start),
+                       as.numeric(date - cond_end)),
+    likely_issue = case_when(
+      abs(days_off) > 350          ~ "year typo",
+      abs(days_off) >= 28 & abs(days_off) <= 35 ~ "month typo",
+      TRUE ~ "check"
+    )
+  )
