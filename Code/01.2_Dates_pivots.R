@@ -76,6 +76,7 @@ ex_long <- ex_dates %>%
       cond_num == "cond_3" ~ ex3_4, cond_num == "cond_4" ~ ex4_4)
   ) %>%
   select(id, condition, cond_num, ex_date1:ex_date4) %>%
+  
   # pivot again so each exercise date is its own row
   pivot_longer(
     cols = ex_date1:ex_date4,
@@ -92,6 +93,7 @@ diet_long <- diet_dates %>%
     names_to = "cond_num",
     values_to = "condition"
   ) %>%
+  
   # match each condition to its diet dates
   mutate(
     diet_date1 = case_when(
@@ -105,6 +107,7 @@ diet_long <- diet_dates %>%
       cond_num == "cond_3" ~ diet3_3, cond_num == "cond_4" ~ diet4_3)
   ) %>%
   select(id, condition, cond_num, diet_date1, diet_date2, diet_date3) %>%
+  
   # pivot diet dates long so each diet day is its own row
   pivot_longer(
     cols = diet_date1:diet_date3,
@@ -121,6 +124,14 @@ diet_long <- diet_long %>%
     TRUE ~ as.Date(date)
   ))
 
+
+# where are the 10 missing diet days concentrated?
+diet_long %>%
+  filter(is.na(date)) %>%
+  count(id, condition) %>%
+  as.data.frame()
+# seems scattered/ incidental
+
 # verify
 class(diet_long$date)
 summary(diet_long$date)
@@ -134,9 +145,8 @@ ex_long <- ex_long %>%
     TRUE ~ as.Date(date, format = "%Y-%m-%d")
   ))
 
-
 #write clean dataset to new file
 #library(writexl)
-write.csv(cond_long,"cond_dates_long", row.names = FALSE)
-write.csv(ex_long,"ex_dates_long", row.names = FALSE)
-write.csv(diet_long,"diet_dates_long", row.names = FALSE)
+#write.csv(cond_long,"cond_dates_long", row.names = FALSE)
+#write.csv(ex_long,"ex_dates_long", row.names = FALSE)
+#write.csv(diet_long,"diet_dates_long", row.names = FALSE)

@@ -227,6 +227,7 @@ ex_dates <- ex_dates %>%
     ex1_4 = as.Date(as.numeric(ex1_4), origin = "1899-12-30")
   )
 
+
 # replacing repeated exercise dates
 ex_dates <- ex_dates %>%
   mutate(
@@ -319,6 +320,7 @@ diet_dates %>%
   select(id, diet1_1, diet1_2, diet1_3)
 
 #write clean datasets to new file -> read into pivot file
+# Write as csv's - will need
 #write.csv(cond_dates,"pre_pivot_cond_dates", row.names = FALSE)
 #write.csv(ex_dates,"pre_pivot_ex_dates", row.names = FALSE)
 #write.csv(diet_dates,"pre_pivot_diet_dates", row.names = FALSE)

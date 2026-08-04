@@ -1,12 +1,27 @@
 ---
-title: "06_Exploring_diet_vs_nondiet_comtrolled"
-author: "Gwen Goodenbour"
-date: "2026-07-15"
-output: html_document
+title: "CGM Project Summary Report - Comparing Diet and Non-Diet Days"
+subtitle: "Investigating the Effects of Diet on 24-hr Glucose Control in Healthy Young Adults"
+author: |
+  | Analyst: Gwen Goodenbour
+  | Principal Investigator (PI): Seth Creasy
+  | Report generated: `r paste(format(Sys.Date(), '%B %d, %Y'))`
+output:
+  html_document:
+    highlight: espresso
+    number_sections: yes
+    theme: yeti
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    code_folding: hide
 ---
 
+```{r, echo=FALSE, out.width='70%', fig.show='hold'}
+logo <- system.file("figures", "sph_cida_wm_blk.png", package="CIDAtools")
+knitr::include_graphics(logo)
+```
 # ----- GLUCOSE ANALYSIS: Diet-controlled vs non-diet-controlled days -----
-# This script reads in cleaned CGM data (averages), combines each glucose day to
+# This script reads in cleaned %>% CGM data (averages), combines each glucose day to
 # its study condition and diet-control status, then 
 # compares glucose overall and per condition
 
@@ -23,8 +38,8 @@ library(gt)
 library(ggplot2)
 library(scales)
 library(gtsummary)
+library(broom)
 ```
-
 
 ```{r, read in data}
 # cgm data
@@ -81,8 +96,13 @@ glucose_b <- cgm %>%
     cv_day  = day_sd_glucose / day_glucose * 100,
     cv_night = night_sd_glucose / night_glucose * 100
   )
-# check- Baseline should show few/no diet-controlled days since BL wasn't diet-controlled.
+# check- Baseline should show no diet-controlled days since BL wasn't diet-controlled.
 glucose_b %>% count(condition, diet_label)
+
+#remove NAs
+
+glucose_b <- glucose_b  %>% 
+  filter(!is.na(condition))
 
 ```
 
@@ -161,7 +181,7 @@ paired_by_cond <- paired %>%
   filter(!is.na(`Diet-controlled`) & !is.na(`Non-diet`))
 
 # paired n per condition
-paired_diff %>% count(condition)
+paired_by_cond %>% count(condition)
 
 # plot: lines connect same participant between diet and non-diet controlled
 # slopes represent difference in glucose
@@ -178,6 +198,8 @@ ggplot(paired %>% filter(!is.na(condition)),
 
 
 ```
+
+
 
 ```{r, paired t-test}
 # one diet and one non diet mean per participant averaged across all conditions
@@ -234,3 +256,169 @@ condition_tests <- condition_tests %>%
 condition_tests
 ```
 
+```{r}
+# distribution of within-person differences per condition
+paired_by_cond %>%
+  mutate(diff = `Diet-controlled` - `Non-diet`) %>%
+  ggplot(aes(x = diff)) +
+  geom_histogram(bins = 10) +
+  facet_wrap(~ condition) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(x = "Diet-controlled minus non-diet (mg/dL)",
+       title = "Within-participant glucose distribution by condition") +
+  theme_minimal()
+```
+```{r}
+# compare with wilcox signed rank test ^ before adjusted
+# rank is not the same as mean difference; does person end up in similar place under both conditions
+fam <- paired_by_cond %>% filter(condition == "Fed-AM")
+
+t.test(fam$`Diet-controlled`, fam$`Non-diet`, paired = TRUE)
+wilcox.test(fam$`Diet-controlled`, fam$`Non-diet`, paired = TRUE)
+
+fedam <- paired_by_cond %>% filter(condition == "Fed-AM")
+t.test(fedam$`Diet-controlled`, fedam$`Non-diet`, paired = TRUE)
+wilcox.test(fedam$`Diet-controlled`, fedam$`Non-diet`, paired = TRUE)
+```
+
+```{r}
+# person-level means: one value per participant per condition per diet status
+paired <- glucose_b %>%
+  filter(!is.na(condition)) %>%
+  group_by(id, condition, diet_label) %>%
+  summarise(
+    mean_24h = mean(avg_glucose, na.rm = TRUE),   # level
+    sd_24h = mean(sd_glucose, na.rm = TRUE),    # variability
+    cv_24h = mean(cv_24h, na.rm = TRUE),        # variability, normalized
+    .groups = "drop"
+  )
+
+
+# helper: paired t-test per condition for a given metric
+test_metric <- function(data, metric) {
+  data %>%
+    select(id, condition, diet_label, value = all_of(metric)) %>%
+    pivot_wider(names_from = diet_label, values_from = value) %>%
+    filter(!is.na(`Diet-controlled`) & !is.na(`Non-diet`)) %>%
+    group_by(condition) %>%
+    filter(n() >= 2) %>%
+    group_modify(~ {
+      t <- t.test(.x$`Diet-controlled`, .x$`Non-diet`, paired = TRUE)
+      tibble(
+        metric    = metric,
+        n_pairs   = nrow(.x),
+        mean_diff = mean(.x$`Diet-controlled` - .x$`Non-diet`),
+        ci_low    = t$conf.int[1],
+        ci_high   = t$conf.int[2],
+        p_value   = t$p.value
+      )
+    }) %>%
+    ungroup()
+}
+
+# run for all three metrics and stack
+results <- bind_rows(
+  test_metric(paired, "mean_24h"),
+  test_metric(paired, "sd_24h"),
+  test_metric(paired, "cv_24h")
+) %>%
+  arrange(metric, condition)
+
+as.data.frame(results)
+
+
+
+```
+```{r}
+# faceted view: each metric x condition, diet vs non-diet
+paired %>%
+  pivot_longer(c(mean_24h, sd_24h, cv_24h),
+               names_to = "metric", values_to = "value") %>%
+  ggplot(aes(x = diet_label, y = value, group = id)) +
+  geom_line(alpha = 0.3, colour = "grey50") +
+  geom_point(aes(colour = diet_label), size = 1.5) +
+  facet_grid(metric ~ condition, scales = "free_y") +
+  labs(x = NULL, y = NULL,
+       title = "Diet vs non-diet days: level and variability by condition") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+Mixed Model
+```{r}
+library(lme4)
+
+# day-level data, keeping every observation (no averaging)
+dat_frame <- cgm_analysis %>%
+  filter(!is.na(condition), !is.na(avg_glucose)) %>%
+  mutate(
+    diet_label = factor(if_else(diet_day_flag == 1, "Diet", "Non-diet")),
+    condition  = factor(condition))
+
+# Random intercept by person only:
+model <- lme4::lmer(avg_glucose ~ diet_label + (1 | id), data = dat_frame)
+
+# Look at model results:
+confint(model )[4,] |> round(2)
+summary(model )
+
+# Random intercept by person and by condition:
+## (assumes observations from the same participant and from the same condition are more similar than observations from different participants or conditions)
+model2 <- lme4::lmer(avg_glucose ~ diet_label + (1 | id) + (1 | condition), data = dat_frame)
+
+# Look at model results:
+confint(model2 )[4,] |> round(2)
+summary(model2 )
+
+# Random intercept by person and by condition, and adding an interaction:
+model3 <- lme4::lmer(avg_glucose ~ diet_label + condition + diet_label:condition + (1 | id) + (1 | condition), 
+                     data = dat_frame)
+# Look at model results:
+confint(model3 )[4,] |> round(2)
+summary(model3 )
+
+# model 3 is not converging as well as the first two- try having condition as a fixed effect only and not also a random effects intercept for each condition
+
+
+```
+
+```{r}
+# model 3 is not converging as well as the first two- try having condition as a fixed effect only and not also a random effects intercept for each condition
+# diet and condition both fixed, plus their interaction; random intercept for person only
+
+#model3 <- lme4::lmer(avg_glucose ~ diet_label * condition + (1 | id), data = dat_frame)
+
+# check the coefficient rows before indexing (interaction adds rows)
+#rownames(confint(model3))
+
+# fed- pm is being dropped- likely because baseline condition
+# diet vs non-diet only makes sense within exercise conditions (BL has no diet days)
+model_dat_ex <- dat_frame %>%
+  filter(condition != "BL") %>%
+  mutate(condition = droplevels(condition))   # drop the empty BL level
+
+model3 <- lme4::lmer(avg_glucose ~ diet_label * condition + (1 | id),
+                     data = model_dat_ex)
+
+summary(model3)
+rownames(confint(model3))
+
+# how many observations in each diet x condition cell?
+model_dat_ex %>% count(condition, diet_label) %>% tidyr::pivot_wider(
+  names_from = diet_label, values_from = n)
+```
+```{r}
+# comparing model fits\
+
+# Fixed-effects comparison: model nests within model3 because adds condition + interaction as fixed effects
+# Question: does model 3's complexity significantly improve the fit over model 1?
+anova(model, model3)
+
+# model_dat_ex <- dat_frame %>%
+#   filter(condition != "BL") %>%
+#   mutate(condition = droplevels(condition))
+```
+
+Q's for Lauren- 
+Should I filter of BL for the first two models as well?

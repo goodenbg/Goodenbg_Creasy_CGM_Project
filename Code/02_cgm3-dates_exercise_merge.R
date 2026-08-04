@@ -45,7 +45,7 @@ ex_summary <- ex %>%
   )
 
 
-# join summarized exercise data to cgm3
+# join summarized exercise data to cgm
 merged <- cgm %>%
   left_join(ex_summary, by = c("id", "condition"))
 
