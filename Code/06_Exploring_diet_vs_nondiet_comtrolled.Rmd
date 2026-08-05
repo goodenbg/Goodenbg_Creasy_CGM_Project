@@ -344,28 +344,48 @@ paired %>%
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 30, hjust = 1))
 ```
+```{r}
+# with interaction
+reg <- lm(avg_glucose ~ diet_label + condition, data = glucose_b)
+summary(reg)
+
+# with interaction
+reg1 <- lm(avg_glucose ~ diet_label * condition, data = glucose_b)
+summary(reg1)
+
+# general RQ
+lin <- lm(avg_glucose ~ condition, data = glucose_b)
+summary(lin)
+```
+
 
 Mixed Model
 ```{r}
 library(lme4)
 
-# day-level data, keeping every observation (no averaging)
-dat_frame <- cgm_analysis %>%
+
+dat_frame <- glucose_b %>%
   filter(!is.na(condition), !is.na(avg_glucose)) %>%
   mutate(
     diet_label = factor(if_else(diet_day_flag == 1, "Diet", "Non-diet")),
-    condition  = factor(condition))
+    condition  = factor(condition)
+  )
+
+# diet vs non-diet only makes sense within exercise conditions (BL has no diet days)
+model_dat <- dat_frame %>%
+  filter(condition != "BL") %>%
+  mutate(condition = droplevels(condition))   # drop the empty BL level
 
 # Random intercept by person only:
-model <- lme4::lmer(avg_glucose ~ diet_label + (1 | id), data = dat_frame)
+model <- lme4::lmer(avg_glucose ~ diet_label + (1 | id), data = model_dat)
 
 # Look at model results:
 confint(model )[4,] |> round(2)
 summary(model )
 
 # Random intercept by person and by condition:
-## (assumes observations from the same participant and from the same condition are more similar than observations from different participants or conditions)
-model2 <- lme4::lmer(avg_glucose ~ diet_label + (1 | id) + (1 | condition), data = dat_frame)
+## (id is nested within multiple conditions
+model2 <- lme4::lmer(avg_glucose ~ diet_label + (1 | id / condition), data = model_dat)
 
 # Look at model results:
 confint(model2 )[4,] |> round(2)
@@ -373,7 +393,7 @@ summary(model2 )
 
 # Random intercept by person and by condition, and adding an interaction:
 model3 <- lme4::lmer(avg_glucose ~ diet_label + condition + diet_label:condition + (1 | id) + (1 | condition), 
-                     data = dat_frame)
+                     data = model_dat)
 # Look at model results:
 confint(model3 )[4,] |> round(2)
 summary(model3 )
@@ -393,32 +413,49 @@ summary(model3 )
 #rownames(confint(model3))
 
 # fed- pm is being dropped- likely because baseline condition
-# diet vs non-diet only makes sense within exercise conditions (BL has no diet days)
-model_dat_ex <- dat_frame %>%
-  filter(condition != "BL") %>%
-  mutate(condition = droplevels(condition))   # drop the empty BL level
 
 model3 <- lme4::lmer(avg_glucose ~ diet_label * condition + (1 | id),
-                     data = model_dat_ex)
+                     data = model_dat)
 
 summary(model3)
 rownames(confint(model3))
 
 # how many observations in each diet x condition cell?
-model_dat_ex %>% count(condition, diet_label) %>% tidyr::pivot_wider(
+model_dat %>% count(condition, diet_label) %>% tidyr::pivot_wider(
   names_from = diet_label, values_from = n)
 ```
 ```{r}
-# comparing model fits\
+# Model 1: diet effect only, random intercept for person
+model <- lmer(avg_glucose ~ diet_label + (1 | id), data = model_dat)
 
-# Fixed-effects comparison: model nests within model3 because adds condition + interaction as fixed effects
-# Question: does model 3's complexity significantly improve the fit over model 1?
-anova(model, model3)
+# Model 2: diet + condition, both fixed; random intercept for person only
+model2 <- lmer(avg_glucose ~ diet_label + condition + (1 | id), data = model_dat)
 
-# model_dat_ex <- dat_frame %>%
-#   filter(condition != "BL") %>%
-#   mutate(condition = droplevels(condition))
+# Model 3: diet x condition interaction, both fixed; random intercept for person only
+model3 <- lmer(avg_glucose ~ diet_label * condition + (1 | id), data = model_dat)
+
+summary(model)
+summary(model2)
+summary(model3)
 ```
 
-Q's for Lauren- 
-Should I filter of BL for the first two models as well?
+
+```{r}
+# comparing model fits\
+anova(model, model2)    # does condition matter
+anova(model2, model3) 
+```
+Model 2: Adding condition interaction does not improve model fit (p = 0.68).
+
+Model 3: The dietxcondition interaction also does not improve fit; diet effect does nt vary by condition (p=0.53).
+
+Model 1: Random intercept by person only is the best fit:
+
+```{r}
+library(lmerTest)   
+model <- lmer(avg_glucose ~ diet_label + (1 | id), data = model_dat)
+summary(model)                    # now includes Pr(>|t|)
+confint(model)                    # CI for the diet effect
+```
+
+
